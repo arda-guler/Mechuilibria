@@ -253,7 +253,7 @@ def create_link(x, y):
     elif len(linking_buffer) == 1:
         if not get_closest_point_to_coords(x, y) == linking_buffer[0]:
             linking_buffer.append(get_closest_point_to_coords(x, y))
-            new_link = rigid_link("newlink", linking_buffer[0], linking_buffer[1], "skyblue", 1000)
+            new_link = rigid_link(name_field.get("1.0","end-1c"), linking_buffer[0], linking_buffer[1], "skyblue", float(link_const_field.get("1.0","end-1c")))
             links.append(new_link)
 
         linking_buffer = []
@@ -290,7 +290,7 @@ def get_closest_link_to_coords(x, y):
     return result
 
 def create_point(x, y):
-    new_point = point("newpoint", [x, y], [0,0], "seagreen", 1)
+    new_point = point(name_field.get("1.0","end-1c"), [x, y], [0,0], "seagreen", float(point_mass_field.get("1.0","end-1c")))
     points.append(new_point)
 
 def delete_point(x, y):
@@ -335,7 +335,7 @@ tk_canvas.grid(row=0, column=1, rowspan=15, columnspan=5)
 main_cam = camera("main_cam", [100, 50], 1, "active")
 
 # canvas click
-click_op = StringVar()
+click_op = StringVar(root, "cp")
 click_op_cp = Radiobutton(root, text="Create Point", value="cp", var = click_op)
 click_op_dp = Radiobutton(root, text="Delete Point", value="dp", var = click_op)
 click_op_cl = Radiobutton(root, text="Create Link", value="cl", var = click_op)
@@ -346,9 +346,20 @@ click_op_dp.grid(row=16, column=2)
 click_op_cl.grid(row=16, column=3)
 click_op_dl.grid(row=16, column=4)
 
-click_op_dp.deselect()
-click_op_cl.deselect()
-click_op_dl.deselect()
+name_field_label = Label(root, text="Name")
+name_field_label.grid(row=17, column=1)
+name_field = Text(root, height=1, width=20)
+name_field.grid(row=18, column=1)
+
+point_mass_field_label = Label(root, text="Point Mass (kg)")
+point_mass_field_label.grid(row=17, column=2)
+point_mass_field = Text(root, height=1, width=20)
+point_mass_field.grid(row=18, column=2)
+
+link_const_field_label = Label(root, text="Link Spring Constant")
+link_const_field_label.grid(row=17, column=3)
+link_const_field = Text(root, height=1, width=20)
+link_const_field.grid(row=18, column=3)
 
 tk_canvas.bind('<Button-1>', clicked_on_canvas)
 
