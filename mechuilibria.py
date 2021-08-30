@@ -361,8 +361,8 @@ root.bind("<Control_L>", zoom_current_cam_out)
 root.bind("<Shift_L>", zoom_current_cam_in)
 
 # crane
-n0 = point("n0", [-30,-100], [0,0], "seagreen", 1)
-n1 = point("n1", [30,-100], [0,0], "seagreen", 1)
+n0 = point("n0", [-30,-100], [0,0], "seagreen", 1, static=True)
+n1 = point("n1", [30,-100], [0,0], "seagreen", 1, static=True)
 n2 = point("n2", [-30,0], [0,0], "seagreen", 1)
 n3 = point("n3", [30,-0], [0,0], "seagreen", 1)
 n4 = point("n4", [-30,100], [0,0], "seagreen", 1)
@@ -376,7 +376,7 @@ t1 = point("t1", [-150, 200], [0,0], "seagreen", 7.5)
 z0 = point("z0", [350, 200], [0,0], "seagreen", 1.5)
 z1 = point("z1", [450, 200], [0,0], "seagreen", 1)
 z2 = point("z2", [350, 160], [0,0], "seagreen", 1.5)
-z3 = point("z3", [350, 0], [50,0], "seagreen", 0.05)
+z3 = point("z3", [350, 50], [50,0], "seagreen", 0.05)
 
 m0 = rigid_link("m0", n0, n1, "skyblue", 1000)
 m1 = rigid_link("m1", n2, n3, "skyblue", 1000)
@@ -404,7 +404,7 @@ f3 = rigid_link("f3", n5, z2, "hotpink", 5000)
 f4 = rigid_link("f4", z2, z0, "skyblue", 1000)
 f5 = rigid_link("f5", z2, z1, "skyblue", 1000)
 f6 = rigid_link("f6", z2, n7, "skyblue", 1000)
-f7 = rigid_link("f7", z2, z3, "orange", 0.1)
+f7 = rigid_link("f7", z2, z3, "orange", 2)
 
 # lists of "things"
 cameras = [main_cam]
