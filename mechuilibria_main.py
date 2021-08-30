@@ -1,9 +1,9 @@
 from tkinter import *
 import time
 
-drag_coeff = 0.005
+drag_coeff = 0.001
 gravity = -9.8 # m/s^2
-dt = 0.002
+dt = 0.01
 
 def scale_vector(vector, scalar):
     result = []
@@ -52,7 +52,7 @@ class point():
         self.accel[1] += force[1]/self.mass
 
     def apply_gravity(self):
-        self.accel[1] += gravity
+        self.apply_force([0, self.mass * gravity])
 
     def apply_drag(self):
         self.apply_force([self.vel[0]**2 * drag_coeff * -sign(self.vel[0]),
@@ -69,13 +69,17 @@ class point():
             self.pos[1] += self.vel[1] * dt
 
 class rigid_link():
-    def __init__(self, p1, p2, color, k=1000):
+    def __init__(self, name, p1, p2, color, k=1000):
+        self.name = name
         self.p1 = p1
         self.p2 = p2
         self.dist = get_dist_between(p1, p2)
         # spring coefficient
         self.k = k
         self.color = color
+
+    def get_name(self):
+        return self.name
 
     def get_color(self):
         return self.color
@@ -111,15 +115,64 @@ class ground():
             # normal force
             if p.get_pos()[1] < self.height:
                 p.apply_force([0, p.mass * p.vel[1] * -1 * (self.elasticity + 1) / dt])
+                p.apply_force([0, p.mass * -gravity])
                 p.pos[1] = self.height
 
             # friction
             if p.get_pos()[1] <= self.height:
                 p.apply_force(scale_vector([p.vel[0], 0], p.mass*gravity*self.k))
 
+class camera():
+    def __init__(self, name, pos, zoom, state):
+        self.name = name
+        self.pos = pos
+        self.zoom = zoom
+        self.state = state
+
+    def activate(self):
+        self.state = "active"
+
+    def deactivate(self):
+        self.state = "standby"
+
+    def set_pos(self, pos):
+        self.pos = pos
+
+    def set_zoom(self, zoom):
+        self.zoom = zoom
+
+    def move(self, movement):
+        self.pos[0] += movement[0]
+        self.pos[1] += movement[1]
+
+    def do_zoom(self, zoom):
+        self.zoom *= zoom
+
+    def get_state(self):
+        return self.state
+
+    def get_pos(self):
+        return self.pos
+
+    def get_zoom(self):
+        return self.zoom
+
+def get_active_cam():
+    current_cam = None
+
+    for cam in cameras:
+        if cam.get_state() == "active":
+            current_cam = cam
+            break
+
+    return cam
+
 def space2canvas(space_coords):
-    canvas_x = space_coords[0] + 500/2
-    canvas_y = -space_coords[1] + 500/2
+
+    current_cam = get_active_cam()
+    
+    canvas_x = ((space_coords[0] - current_cam.get_pos()[0])/current_cam.get_zoom() + 900/2)
+    canvas_y = ((-space_coords[1] + current_cam.get_pos()[1])/current_cam.get_zoom() + 500/2)
     return [canvas_x, canvas_y]
 
 def sign(number):
@@ -128,49 +181,129 @@ def sign(number):
     else:
         return -1
 
+def move_current_cam_left():
+    get_active_cam().move([-30 * get_active_cam().get_zoom(), 0])
+
+def move_current_cam_right():
+    get_active_cam().move([30 * get_active_cam().get_zoom(), 0])
+
+def move_current_cam_up():
+    get_active_cam().move([0, 30 * get_active_cam().get_zoom()])
+
+def move_current_cam_down():
+    get_active_cam().move([0, -30 * get_active_cam().get_zoom()])
+
+def zoom_current_cam_out():
+    get_active_cam().do_zoom(2)
+
+def zoom_current_cam_in():
+    get_active_cam().do_zoom(0.5)
+
 root = Tk()
 root.title("Mechuilibria")
-root.geometry("500x500")
+root.geometry("1000x600")
 
-tk_canvas = Canvas(root, width=500, height=500, bg="white")
-tk_canvas.pack(pady=20)
+# label controls
+labelsLabel = Label(root, text="Labels")
+labelsLabel.grid(row=0, column=0)
 
+pointLabels = IntVar()
+linkLabels = IntVar()
+
+pointsLabelCheck = Checkbutton(root, text="Points", variable=pointLabels)
+pointsLabelCheck.grid(row=1, column=0)
+
+linkLabelCheck = Checkbutton(root, text="Links", variable=linkLabels)
+linkLabelCheck.grid(row=2, column=0)
+
+# camera controls
+camera_left = Button(root, text="<--", command=move_current_cam_left)
+camera_left.grid(row=7, column=1)
+
+camera_right = Button(root, text="-->", command=move_current_cam_right)
+camera_right.grid(row=7, column=3)
+
+camera_up = Button(root, text="^\n|", command=move_current_cam_up, padx=50)
+camera_up.grid(row=6, column=2)
+
+camera_down = Button(root, text="|\nV", command=move_current_cam_down, padx=50)
+camera_down.grid(row=8, column=2)
+
+zoom_out = Button(root, text="Zoom Out", command=zoom_current_cam_out)
+zoom_out.grid(row=6, column=1)
+
+zoom_in = Button(root, text="Zoom In", command=zoom_current_cam_in)
+zoom_in.grid(row=8, column=1)
+
+tk_canvas = Canvas(root, width=900, height=500, bg="white")
+tk_canvas.grid(row=0, column=1, rowspan=5, columnspan=3)
+
+main_cam = camera("main_cam", [100, 50], 1, "active")
+
+# crane
 n0 = point("n0", [-30,-100], [0,0], "seagreen", 1)
 n1 = point("n1", [30,-100], [0,0], "seagreen", 1)
 n2 = point("n2", [-30,0], [0,0], "seagreen", 1)
 n3 = point("n3", [30,-0], [0,0], "seagreen", 1)
-n4 = point("n4", [-30,100], [500,0], "seagreen", 1)
+n4 = point("n4", [-30,100], [0,0], "seagreen", 1)
 n5 = point("n5", [30,100], [0,0], "seagreen", 1)
 n6 = point("n6", [-30,200], [0,0], "seagreen", 1)
 n7 = point("n7", [30,200], [0,0], "seagreen", 1)
 
-m0 = rigid_link(n0, n1, "skyblue", 1000)
-m1 = rigid_link(n2, n3, "skyblue", 1000)
-m2 = rigid_link(n4, n5, "skyblue", 1000)
-m3 = rigid_link(n6, n7, "skyblue", 1000)
-m4 = rigid_link(n0, n2, "skyblue", 1000)
-m5 = rigid_link(n2, n4, "skyblue", 1000)
-m6 = rigid_link(n4, n6, "skyblue", 1000)
-m7 = rigid_link(n1, n3, "skyblue", 1000)
-m8 = rigid_link(n3, n5, "skyblue", 1000)
-m9 = rigid_link(n5, n7, "skyblue", 1000)
-m10 = rigid_link(n0, n3, "magenta4", 200)
-m11 = rigid_link(n2, n5, "hotpink", 5000)
-m12 = rigid_link(n4, n7, "magenta4", 200)
+t0 = point("t0", [-150, 100], [0,0], "seagreen", 5)
+t1 = point("t1", [-150, 200], [0,0], "seagreen", 5)
 
-floor = ground(-100, "magenta4", 0.5, 0.2)
+z0 = point("z0", [350, 200], [0,0], "seagreen", 1.5)
+z1 = point("z1", [450, 200], [0,0], "seagreen", 1)
+z2 = point("z2", [350, 160], [0,0], "seagreen", 1.5)
+z3 = point("z3", [350, 0], [50,0], "seagreen", 0.05)
 
-points = [n0, n1, n2, n3, n4, n5, n6, n7]
-links = [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12]
-grounds = [floor]
+m0 = rigid_link("m0", n0, n1, "skyblue", 1000)
+m1 = rigid_link("m1", n2, n3, "skyblue", 1000)
+m2 = rigid_link("m2", n4, n5, "skyblue", 1000)
+m3 = rigid_link("m3", n6, n7, "skyblue", 1000)
+m4 = rigid_link("m4", n0, n2, "skyblue", 1000)
+m5 = rigid_link("m5", n2, n4, "skyblue", 1000)
+m6 = rigid_link("m6", n4, n6, "skyblue", 1000)
+m7 = rigid_link("m7", n1, n3, "skyblue", 1000)
+m8 = rigid_link("m8", n3, n5, "skyblue", 1000)
+m9 = rigid_link("m9", n5, n7, "skyblue", 1000)
+m10 = rigid_link("m10", n0, n3, "magenta4", 200)
+m11 = rigid_link("m11", n2, n5, "hotpink", 5000)
+m12 = rigid_link("m12", n4, n7, "magenta4", 200)
 
-labels = True
+r0 = rigid_link("r0", t0, n4, "skyblue", 1000)
+r1 = rigid_link("r1", t1, n6, "skyblue", 1000)
+r2 = rigid_link("r2", t0, t1, "skyblue", 1000)
+r3 = rigid_link("r3", t0, n6, "hotpink", 5000)
+
+f0 = rigid_link("f0", n7, z0, "skyblue", 1000)
+f1 = rigid_link("f1", n5, z0, "hotpink", 5000)
+f2 = rigid_link("f2", z0, z1, "skyblue", 1000)
+f3 = rigid_link("f3", n5, z2, "hotpink", 5000)
+f4 = rigid_link("f4", z2, z0, "skyblue", 1000)
+f5 = rigid_link("f5", z2, z1, "skyblue", 1000)
+f6 = rigid_link("f6", z2, n7, "skyblue", 1000)
+f7 = rigid_link("f7", z2, z3, "orange", 0.1)
+
+# lists of "things"
+cameras = [main_cam]
+
+floor = ground(-100, "magenta4", 0.5, 0.8)
+
+points = [n0, n1, n2, n3, n4, n5, n6, n7,
+          t0, t1,
+          z0, z1, z2, z3]
+
+links = [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12,
+         r0, r1, r2, r3,
+         f0, f1, f2, f3, f4, f5, f6, f7]
 
 while True:
 
     floor.apply_force(points)
-    tk_canvas.create_rectangle(0, space2canvas([0, floor.get_height()])[1],
-                                500, 500,
+    tk_canvas.create_rectangle(-1000, space2canvas([0, floor.get_height()])[1],
+                                1000, 500,
                                 fill=floor.get_color())
 
     for link in links:
@@ -184,17 +317,21 @@ while True:
                               space2canvas(p.get_pos())[0]+1, space2canvas(p.get_pos())[1]+1,
                               fill=p.get_color())
 
-        if not p.pos[1] <= floor.get_height():
-            p.apply_gravity()
-                              
+        p.apply_gravity()                    
         p.apply_drag()
         p.update_vel()
         p.update_pos()
 
-    if labels:
+    if pointLabels.get():
         for p in points:
             tk_canvas.create_text(space2canvas(p.get_pos())[0]-10, space2canvas(p.get_pos())[1]-10,
                                   text=p.get_name())
+
+    if linkLabels.get():
+        for l in links:
+            tk_canvas.create_text((space2canvas(l.p1.get_pos())[0] + space2canvas(l.p2.get_pos())[0])/2,
+                                  (space2canvas(l.p1.get_pos())[1] + space2canvas(l.p2.get_pos())[1])/2,
+                                  text=l.get_name(), fill=l.get_color())
     
     root.update()
     tk_canvas.delete("all")
