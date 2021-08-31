@@ -163,8 +163,12 @@ class point():
         return [(p2.pos[0] - self.pos[0])/get_dist_between(self, p2),
                 (p2.pos[1] - self.pos[1])/get_dist_between(self, p2)]
     def get_vector_towards(self, p2):
-        return [(p2.pos[0] - self.pos[0]),
-                (p2.pos[1] - self.pos[1])]
+        if type(p2) is point:
+            return [(p2.pos[0] - self.pos[0]),
+                    (p2.pos[1] - self.pos[1])]
+        else:
+            return [p2[0] - self.pos[0],
+                    p2[1] - self.pos[1]]
 
     def clear_accel(self):
         # call this every tick to not have residual forces from
@@ -191,6 +195,19 @@ class point():
         if not self.static:
             self.pos[0] += self.vel[0] * dt
             self.pos[1] += self.vel[1] * dt
+
+########################
+#    CONSTANT FORCE    #
+########################
+
+class const_force():
+    def __init__(self, name, point, force):
+        self.name = name
+        self.point = point
+        self.force = force
+
+    def apply(self):
+        self.point.apply_force(self.force)
 
 def scale_vector(vector, scalar):
     result = []
@@ -245,6 +262,45 @@ def clicked_on_canvas(event):
     elif click_op.get() == "dl":
         delete_link(x, y)
 
+    elif click_op.get() == "af":
+        apply_force_with_mouse(x, y, "l")
+
+    elif click_op.get() == "rf":
+        delete_force(x, y)
+
+def right_clicked_on_canvas(event):
+    x = canvas2space([event.x,0])[0]
+    y = canvas2space([0, event.y])[1]
+
+    if click_op.get() == "af":
+        apply_force_with_mouse(x, y, "r")
+
+def apply_force_with_mouse(x, y, click):
+    global force_buffer
+
+    if click == "r":
+        if not get_closest_point_to_coords(x, y) in force_buffer:
+            force_buffer.append(get_closest_point_to_coords(x, y))
+        else:
+            force_buffer.remove(get_closest_point_to_coords(x, y))
+
+    elif click == "l":
+        for p in force_buffer:
+            create_force(x, y, p)
+            force_buffer = []
+
+def create_force(x, y, point):
+    global forces
+    forces.append(const_force(name_field.get("1.0","end-1c"), point, scale_vector(point.get_vector_towards([x, y]), 0.01)))
+
+def delete_force(x, y):
+    global forces
+    force_tbd = get_closest_force_to_coords(x, y)
+
+    if force_tbd:
+        forces.remove(force_tbd)
+        del force_tbd
+
 def create_link(x, y):
     global linking_buffer
     
@@ -289,8 +345,17 @@ def get_closest_link_to_coords(x, y):
 
     return result
 
+def get_closest_force_to_coords(x, y):
+    result = None
+    for f in forces:
+        if not result or (get_dist_between([x, y], [f.point.get_pos()[0]+f.force[0]*100, f.point.get_pos()[1]+f.force[1]*100]) <
+                          get_dist_between([x, y], [result.point.get_pos()[0]+result.force[0]*100, result.point.get_pos()[1]+result.force[1]*100])):
+            result = f
+
+    return result
+
 def create_point(x, y):
-    new_point = point(name_field.get("1.0","end-1c"), [x, y], [0,0], "seagreen", float(point_mass_field.get("1.0","end-1c")))
+    new_point = point(name_field.get("1.0","end-1c"), [x, y], [0,0], "seagreen", float(point_mass_field.get("1.0","end-1c")), staticPoint.get())
     points.append(new_point)
 
 def delete_point(x, y):
@@ -310,7 +375,7 @@ def delete_point(x, y):
 
 root = Tk()
 root.title("Mechuilibria")
-root.geometry("1000x600")
+root.geometry("1150x600")
 
 # label controls
 labelsLabel = Label(root, text="Labels")
@@ -318,6 +383,8 @@ labelsLabel.grid(row=0, column=0)
 
 pointLabels = IntVar()
 linkLabels = IntVar()
+
+staticPoint = IntVar()
 
 pointsLabelCheck = Checkbutton(root, text="Points", variable=pointLabels)
 pointsLabelCheck.grid(row=1, column=0)
@@ -341,10 +408,26 @@ click_op_dp = Radiobutton(root, text="Delete Point", value="dp", var = click_op)
 click_op_cl = Radiobutton(root, text="Create Link", value="cl", var = click_op)
 click_op_dl = Radiobutton(root, text="Delete Link", value="dl", var = click_op)
 
-click_op_cp.grid(row=16, column=1)
-click_op_dp.grid(row=16, column=2)
-click_op_cl.grid(row=16, column=3)
-click_op_dl.grid(row=16, column=4)
+click_op_af = Radiobutton(root, text="Apply Force", value="af", var = click_op)
+click_op_rf = Radiobutton(root, text="Remove Force", value="rf", var = click_op)
+
+click_op_label = Label(root, text="Mouse Click Operation")
+click_op_label.grid(row=0, column=6)
+
+click_op_cp.grid(row=1, column=6)
+click_op_dp.grid(row=2, column=6)
+click_op_cl.grid(row=3, column=6)
+click_op_dl.grid(row=4, column=6)
+
+click_op_af.grid(row=5, column=6)
+click_op_rf.grid(row=6, column=6)
+
+instruction = StringVar()
+instruction_field = Label(root, textvariable=instruction)
+instruction_field.grid(row=7, column=6, rowspan=3, padx=10)
+
+bottom_options_label = Label(root, text="Create Point/Link Options")
+bottom_options_label.grid(row=16, column=1)
 
 name_field_label = Label(root, text="Name")
 name_field_label.grid(row=17, column=1)
@@ -356,12 +439,16 @@ point_mass_field_label.grid(row=17, column=2)
 point_mass_field = Text(root, height=1, width=20)
 point_mass_field.grid(row=18, column=2)
 
+point_static_field = Checkbutton(root, text="Static Point", variable=staticPoint)
+point_static_field.grid(row=19, column=1)
+
 link_const_field_label = Label(root, text="Link Spring Constant")
 link_const_field_label.grid(row=17, column=3)
 link_const_field = Text(root, height=1, width=20)
 link_const_field.grid(row=18, column=3)
 
 tk_canvas.bind('<Button-1>', clicked_on_canvas)
+tk_canvas.bind('<Button-3>', right_clicked_on_canvas)
 
 # camera controls
 root.bind("<Up>", move_current_cam_up)
@@ -430,15 +517,48 @@ links = [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12,
          r0, r1, r2, r3,
          f0, f1, f2, f3, f4, f5, f6, f7]
 
+forces = []
+
+force_buffer = []
+
 linking_buffer = []
 
 while True:
+
+    if click_op.get() == "cp":
+        instruction.set("Click to create point at\nmouse cursor position.\nSet name and mass in\ninput fields.")
+    elif click_op.get() == "dp":
+        instruction.set("Click to remove point \nclosest to mouse cursor.")
+    elif click_op.get() == "cl":
+        instruction.set("Click to select points\nto link. Set name and\nspring constant in\ninput fields.")
+    elif click_op.get() == "dl":
+        instruction.set("Click to remove link\nclosest to mouse cursor.")
+    elif click_op.get() == "af":
+        instruction.set("Right click to select\npoints to apply force to.\nLeft click to set the\nforce vector.")
+    elif click_op.get() == "rf":
+        instruction.set("Click to remove force\nclosest to mouse cursor.")
 
     if not dt == 0:
         floor.apply_force(points)
     tk_canvas.create_rectangle(-1000, space2canvas([0, floor.get_height()])[1],
                                 1000, 500,
                                 fill=floor.get_color())
+
+    for f in forces:
+        tk_canvas.create_line(space2canvas(f.point.get_pos())[0], space2canvas(f.point.get_pos())[1],
+                              space2canvas([f.point.get_pos()[0]+f.force[0]*100, f.point.get_pos()[1]])[0], space2canvas([f.point.get_pos()[0], f.point.get_pos()[1]+f.force[1]*100])[1],
+                              fill="blue", arrow=LAST)
+        f.apply()
+
+    for p in force_buffer:
+        tk_canvas.create_oval(space2canvas(p.get_pos())[0]-5, space2canvas(p.get_pos())[1]-5,
+                              space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
+                              fill="blue")
+
+    for p in linking_buffer:
+        tk_canvas.create_oval(space2canvas(p.get_pos())[0]-5, space2canvas(p.get_pos())[1]-5,
+                              space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
+                              fill="red")
 
     for link in links:
         if not dt == 0:
