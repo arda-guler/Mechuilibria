@@ -115,6 +115,9 @@ class rigid_link():
         self.k = k
         self.color = color
 
+    def get_k(self):
+        return self.k
+
     def get_name(self):
         return self.name
 
@@ -268,12 +271,45 @@ def clicked_on_canvas(event):
     elif click_op.get() == "rf":
         delete_force(x, y)
 
+    elif click_op.get() == "cm":
+        adjust_com_buffer(x, y, "l")
+
 def right_clicked_on_canvas(event):
     x = canvas2space([event.x,0])[0]
     y = canvas2space([0, event.y])[1]
 
     if click_op.get() == "af":
         apply_force_with_mouse(x, y, "r")
+
+    elif click_op.get() == "cm":
+        adjust_com_buffer(x, y, "r")
+
+def adjust_com_buffer(x, y, click):
+    global calc_com_buffer
+
+    if click == "l":
+        if not get_closest_point_to_coords(x, y) in calc_com_buffer:
+            calc_com_buffer.append(get_closest_point_to_coords(x, y))
+    elif click == "r":
+        if not len(calc_com_buffer) <= 0 and get_closest_point_to_coords(x, y) in calc_com_buffer:
+            calc_com_buffer.remove(get_closest_point_to_coords(x, y))
+
+def calc_com():
+    global calc_com_buffer
+    
+    com_x = 0
+    com_y = 0
+    com_mass = 0
+    
+    for p in calc_com_buffer:
+        com_mass += p.get_mass()
+        com_x += p.get_pos()[0] * p.get_mass()
+        com_y += p.get_pos()[1] * p.get_mass()
+
+    com_x = com_x / com_mass
+    com_y = com_y / com_mass
+
+    return ([com_x, com_y], com_mass)
 
 def apply_force_with_mouse(x, y, click):
     global force_buffer
@@ -386,15 +422,33 @@ linkLabels = IntVar()
 
 staticPoint = IntVar()
 
+pointLabelType = StringVar()
+linkLabelType = StringVar()
+
+pointLabelType.set("n")
+linkLabelType.set("n")
+
 pointsLabelCheck = Checkbutton(root, text="Points", variable=pointLabels)
 pointsLabelCheck.grid(row=1, column=0)
 
+point_label_type_name = Radiobutton(root, text="Names", value="n", var = pointLabelType)
+point_label_type_mass = Radiobutton(root, text="Masses", value="m", var = pointLabelType)
+
+point_label_type_name.grid(row=2, column=0)
+point_label_type_mass.grid(row=3, column=0)
+
 linkLabelCheck = Checkbutton(root, text="Links", variable=linkLabels)
-linkLabelCheck.grid(row=2, column=0)
+linkLabelCheck.grid(row=4, column=0)
+
+link_label_type_name = Radiobutton(root, text="Names", value="n", var = linkLabelType)
+link_label_type_k = Radiobutton(root, text="Spring Consts.", value="k", var = linkLabelType)
+
+link_label_type_name.grid(row=5, column=0)
+link_label_type_k.grid(row=6, column=0)
 
 # pause-resume
 pauseResumeButton = Button(root, text="Pause/Resume", command=toggle_pause)
-pauseResumeButton.grid(row=3, column=0)
+pauseResumeButton.grid(row=7, column=0)
 
 tk_canvas = Canvas(root, width=900, height=500, bg="white")
 tk_canvas.grid(row=0, column=1, rowspan=15, columnspan=5)
@@ -411,6 +465,8 @@ click_op_dl = Radiobutton(root, text="Delete Link", value="dl", var = click_op)
 click_op_af = Radiobutton(root, text="Apply Force", value="af", var = click_op)
 click_op_rf = Radiobutton(root, text="Remove Force", value="rf", var = click_op)
 
+click_op_cm = Radiobutton(root, text="Calc. CoM", value="cm", var = click_op)
+
 click_op_label = Label(root, text="Mouse Click Operation")
 click_op_label.grid(row=0, column=6)
 
@@ -422,9 +478,11 @@ click_op_dl.grid(row=4, column=6)
 click_op_af.grid(row=5, column=6)
 click_op_rf.grid(row=6, column=6)
 
+click_op_cm.grid(row=7, column=6)
+
 instruction = StringVar()
 instruction_field = Label(root, textvariable=instruction)
-instruction_field.grid(row=7, column=6, rowspan=3, padx=10)
+instruction_field.grid(row=8, column=6, rowspan=3, padx=10)
 
 bottom_options_label = Label(root, text="Create Point/Link Options")
 bottom_options_label.grid(row=16, column=1)
@@ -523,6 +581,8 @@ force_buffer = []
 
 linking_buffer = []
 
+calc_com_buffer = []
+
 while True:
 
     if click_op.get() == "cp":
@@ -537,6 +597,8 @@ while True:
         instruction.set("Right click to select\npoints to apply force to.\nLeft click to set the\nforce vector.")
     elif click_op.get() == "rf":
         instruction.set("Click to remove force\nclosest to mouse cursor.")
+    elif click_op.get() == "cm":
+        instruction.set("Left click to choose\nmasses to calculate\ncenter of mass. Right\nclick to remove mass.")
 
     if not dt == 0:
         floor.apply_force(points)
@@ -560,6 +622,21 @@ while True:
                               space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
                               fill="red")
 
+    if len(calc_com_buffer):
+        for p in calc_com_buffer:
+            tk_canvas.create_oval(space2canvas(p.get_pos())[0]-5, space2canvas(p.get_pos())[1]-5,
+                              space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
+                              fill="#ffc100")
+        
+        com_pos, com_mass = calc_com()
+        tk_canvas.create_line(space2canvas(com_pos)[0]-8, space2canvas(com_pos)[1]-8,
+                              space2canvas(com_pos)[0]+8, space2canvas(com_pos)[1]+8,
+                              fill="#ffc100")
+
+        tk_canvas.create_line(space2canvas(com_pos)[0]-8, space2canvas(com_pos)[1]+8,
+                              space2canvas(com_pos)[0]+8, space2canvas(com_pos)[1]-8,
+                              fill="#ffc100")
+
     for link in links:
         if not dt == 0:
             link.apply_force()
@@ -579,15 +656,26 @@ while True:
             p.update_pos()
 
     if pointLabels.get():
-        for p in points:
-            tk_canvas.create_text(space2canvas(p.get_pos())[0]-10, space2canvas(p.get_pos())[1]-10,
-                                  text=p.get_name())
+        if pointLabelType.get() == "n":
+            for p in points:
+                tk_canvas.create_text(space2canvas(p.get_pos())[0]-10, space2canvas(p.get_pos())[1]-10,
+                                      text=p.get_name())
+        elif pointLabelType.get() == "m":
+            for p in points:
+                tk_canvas.create_text(space2canvas(p.get_pos())[0]-10, space2canvas(p.get_pos())[1]-10,
+                                      text=str(p.get_mass()))
 
     if linkLabels.get():
-        for l in links:
-            tk_canvas.create_text((space2canvas(l.p1.get_pos())[0] + space2canvas(l.p2.get_pos())[0])/2,
-                                  (space2canvas(l.p1.get_pos())[1] + space2canvas(l.p2.get_pos())[1])/2,
-                                  text=l.get_name(), fill=l.get_color())
+        if linkLabelType.get() == "n":
+            for l in links:
+                tk_canvas.create_text((space2canvas(l.p1.get_pos())[0] + space2canvas(l.p2.get_pos())[0])/2,
+                                      (space2canvas(l.p1.get_pos())[1] + space2canvas(l.p2.get_pos())[1])/2,
+                                      text=l.get_name(), fill=l.get_color())
+        elif linkLabelType.get() == "k":
+            for l in links:
+                tk_canvas.create_text((space2canvas(l.p1.get_pos())[0] + space2canvas(l.p2.get_pos())[0])/2,
+                                      (space2canvas(l.p1.get_pos())[1] + space2canvas(l.p2.get_pos())[1])/2,
+                                      text=str(l.get_k()), fill=l.get_color())
     
     root.update()
     tk_canvas.delete("all")
