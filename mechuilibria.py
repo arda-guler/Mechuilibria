@@ -345,7 +345,7 @@ def create_link(x, y):
     elif len(linking_buffer) == 1:
         if not get_closest_point_to_coords(x, y) == linking_buffer[0]:
             linking_buffer.append(get_closest_point_to_coords(x, y))
-            new_link = rigid_link(name_field.get("1.0","end-1c"), linking_buffer[0], linking_buffer[1], "skyblue", float(link_const_field.get("1.0","end-1c")))
+            new_link = rigid_link(name_field.get("1.0","end-1c"), linking_buffer[0], linking_buffer[1], link_color_field.get("1.0","end-1c"), float(link_const_field.get("1.0","end-1c")))
             links.append(new_link)
 
         linking_buffer = []
@@ -504,6 +504,11 @@ link_const_field_label = Label(root, text="Link Spring Constant")
 link_const_field_label.grid(row=17, column=3)
 link_const_field = Text(root, height=1, width=20)
 link_const_field.grid(row=18, column=3)
+
+link_color_field_label = Label(root, text="Link Color")
+link_color_field_label.grid(row=17, column=4)
+link_color_field = Text(root, height=1, width=20)
+link_color_field.grid(row=18, column=4)
 
 tk_canvas.bind('<Button-1>', clicked_on_canvas)
 tk_canvas.bind('<Button-3>', right_clicked_on_canvas)
