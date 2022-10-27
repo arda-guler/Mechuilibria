@@ -1,8 +1,10 @@
 from tkinter import *
 import time
 
-drag_coeff = 0.001
-gravity = -9.8 # m/s^2
+from vector2 import *
+
+drag_coeff = 1E-5
+gravity = vec2(0, -9.81) # m/s^2
 dt = 0
 
 ########################
@@ -29,8 +31,7 @@ class camera():
         self.zoom = zoom
 
     def move(self, movement):
-        self.pos[0] += movement[0]
-        self.pos[1] += movement[1]
+        self.pos += movement
 
     def do_zoom(self, zoom):
         self.zoom *= zoom
@@ -55,16 +56,16 @@ def get_active_cam():
     return cam
 
 def move_current_cam_left(event=None):
-    get_active_cam().move([-30 * get_active_cam().get_zoom(), 0])
+    get_active_cam().move(vec2(-30 * get_active_cam().get_zoom(), 0))
 
 def move_current_cam_right(event=None):
-    get_active_cam().move([30 * get_active_cam().get_zoom(), 0])
+    get_active_cam().move(vec2(30 * get_active_cam().get_zoom(), 0))
 
 def move_current_cam_up(event=None):
-    get_active_cam().move([0, 30 * get_active_cam().get_zoom()])
+    get_active_cam().move(vec2(0, 30 * get_active_cam().get_zoom()))
 
 def move_current_cam_down(event=None):
-    get_active_cam().move([0, -30 * get_active_cam().get_zoom()])
+    get_active_cam().move(vec2(0, -30 * get_active_cam().get_zoom()))
 
 def zoom_current_cam_out(event=None):
     get_active_cam().do_zoom(2)
@@ -92,14 +93,14 @@ class ground():
     def apply_force(self, points):
         for p in points:
             # normal force
-            if p.get_pos()[1] < self.height:
-                p.apply_force([0, p.mass * p.vel[1] * -1 * (self.elasticity + 1) / dt])
-                p.apply_force([0, p.mass * -gravity])
-                p.pos[1] = self.height
+            if p.get_pos().y < self.height:
+                p.apply_force(vec2(0, p.mass * p.vel.y * -1 * (self.elasticity + 1) / dt))
+                p.apply_force(gravity * p.mass)
+                p.pos.y = self.height
 
             # friction
-            if p.get_pos()[1] <= self.height:
-                p.apply_force(scale_vector([p.vel[0], 0], p.mass*gravity*self.k))
+            if p.get_pos().y <= self.height:
+                p.apply_force(vec2(p.vel.x, 0) * p.mass*gravity.mag()*self.k)
 
 ########################
 #       LINK           #
@@ -126,16 +127,15 @@ class rigid_link():
 
     def apply_force(self):
         if get_dist_between(self.p1, self.p2) > self.dist:
-            self.p1.apply_force(scale_vector(self.p1.get_unit_vector_towards(self.p2),
-                                             self.k*abs(get_dist_between(self.p1, self.p2) - self.dist)))
-            self.p2.apply_force(scale_vector(self.p2.get_unit_vector_towards(self.p1),
-                                             self.k*abs(get_dist_between(self.p1, self.p2) - self.dist)))
+            self.p1.apply_force(self.p1.get_unit_vector_towards(self.p2) * self.k*abs(get_dist_between(self.p1, self.p2) - self.dist))
+            self.p2.apply_force(self.p2.get_unit_vector_towards(self.p1) * self.k*abs(get_dist_between(self.p1, self.p2) - self.dist))
             
         elif get_dist_between(self.p1, self.p2) < self.dist:
-            self.p1.apply_force(scale_vector(self.p1.get_unit_vector_towards(self.p2),
-                                             -self.k*abs(get_dist_between(self.p1, self.p2) - self.dist)))
-            self.p2.apply_force(scale_vector(self.p2.get_unit_vector_towards(self.p1),
-                                             -self.k*abs(get_dist_between(self.p1, self.p2) - self.dist)))
+            self.p1.apply_force(self.p1.get_unit_vector_towards(self.p2) * -self.k*abs(get_dist_between(self.p1, self.p2) - self.dist))
+            self.p2.apply_force(self.p2.get_unit_vector_towards(self.p1) * -self.k*abs(get_dist_between(self.p1, self.p2) - self.dist))
+
+    def get_midpoint(self):
+        return (self.p1.get_pos() + self.p2.get_pos())/2
 
 ########################
 #     POINT MASS       #
@@ -146,10 +146,12 @@ class point():
         self.name = name
         self.pos = pos
         self.vel = vel
-        self.accel = [0,0]
+        self.accel = vec2()
         self.mass = mass
         self.static = static
         self.color = color
+
+        self.limit_axis = None
 
     def get_name(self):
         return self.name
@@ -163,41 +165,46 @@ class point():
         return self.color
 
     def get_unit_vector_towards(self, p2):
-        return [(p2.pos[0] - self.pos[0])/get_dist_between(self, p2),
-                (p2.pos[1] - self.pos[1])/get_dist_between(self, p2)]
+        return (p2.pos - self.pos)/(p2.pos - self.pos).mag()
+    
     def get_vector_towards(self, p2):
         if type(p2) is point:
-            return [(p2.pos[0] - self.pos[0]),
-                    (p2.pos[1] - self.pos[1])]
+            return p2.pos - self.pos
         else:
-            return [p2[0] - self.pos[0],
-                    p2[1] - self.pos[1]]
+            return p2 - self.pos
 
     def clear_accel(self):
         # call this every tick to not have residual forces from
         # previous frame
-        self.accel = [0,0]
+        self.accel = vec2(0,0)
 
     def apply_force(self, force):
-        self.accel[0] += force[0]/self.mass
-        self.accel[1] += force[1]/self.mass
+        self.accel += force/self.mass
 
     def apply_gravity(self):
-        self.apply_force([0, self.mass * gravity])
+        self.apply_force(gravity * self.mass)
 
     def apply_drag(self):
-        self.apply_force([self.vel[0]**2 * drag_coeff * -sign(self.vel[0]),
-                          self.vel[1]**2 * drag_coeff * -sign(self.vel[1])])
+        self.apply_force((self.vel.normalized() * -1) * (self.vel.mag()**2) * drag_coeff)
 
     def update_vel(self):
         if not self.static:
-            self.vel[0] += self.accel[0] * dt
-            self.vel[1] += self.accel[1] * dt
+            self.vel += self.accel * dt
+
+        if self.limit_axis:
+            self.vel = self.limit_axis * self.vel.dot(self.limit_axis)
 
     def update_pos(self):
         if not self.static:
-            self.pos[0] += self.vel[0] * dt
-            self.pos[1] += self.vel[1] * dt
+            self.pos += self.vel * dt
+
+    def set_limit_axis(self, vec):
+        if vec == "x":
+            self.limit_axis = vec2(1,0)
+        elif vec == "y":
+            self.limit_axis = vec2(0, 1)
+        else:
+            self.limit_axis = vec.normalized()
 
 ########################
 #    CONSTANT FORCE    #
@@ -212,36 +219,30 @@ class const_force():
     def apply(self):
         self.point.apply_force(self.force)
 
-def scale_vector(vector, scalar):
-    result = []
-    for element in vector:
-        result.append(element * scalar)
-    return result
-
 def get_dist_between(p1, p2):
     if (type(p1) is point) and (type(p2) is point):
-        return ((p1.pos[0] - p2.pos[0])**2 + (p1.pos[1] - p2.pos[1])**2)**0.5
+        return (p1.pos - p2.pos).mag()
     elif (type(p1) is point) and not (type(p2) is point):
-        return ((p1.pos[0] - p2[0])**2 + (p1.pos[1] - p2[1])**2)**0.5
+        return (p1.pos - p2).mag()
     elif not (type(p1) is point) and (type(p2) is point):
-        return ((p1[0] - p2.pos[0])**2 + (p1[1] - p2.pos[1])**2)**0.5
+        return (p1 - p2.pos).mag()
     else:
-        return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+        return (p1 - p2).mag()
 
 def space2canvas(space_coords):
     current_cam = get_active_cam()
     
-    canvas_x = ((space_coords[0] - current_cam.get_pos()[0])/current_cam.get_zoom() + 900/2)
-    canvas_y = ((-space_coords[1] + current_cam.get_pos()[1])/current_cam.get_zoom() + 500/2)
-    return [canvas_x, canvas_y]
+    canvas_x = ((space_coords.x - current_cam.get_pos().x)/current_cam.get_zoom() + 900/2)
+    canvas_y = ((-space_coords.y + current_cam.get_pos().y)/current_cam.get_zoom() + 500/2)
+    return vec2(canvas_x, canvas_y)
 
 def canvas2space(canvas_coords):
     current_cam = get_active_cam()
 
-    space_x = (canvas_coords[0] - 900/2)*current_cam.get_zoom() + current_cam.get_pos()[0]
-    space_y = -((canvas_coords[1] - 500/2)*current_cam.get_zoom() - current_cam.get_pos()[1])
+    space_x = (canvas_coords.x - 900/2)*current_cam.get_zoom() + current_cam.get_pos().x
+    space_y = -((canvas_coords.y - 500/2)*current_cam.get_zoom() - current_cam.get_pos().y)
 
-    return [space_x, space_y]
+    return vec2(space_x, space_y)
 
 def sign(number):
     if number >= 0:
@@ -250,8 +251,8 @@ def sign(number):
         return -1
 
 def clicked_on_canvas(event):
-    x = canvas2space([event.x,0])[0]
-    y = canvas2space([0, event.y])[1]
+    x = canvas2space(vec2(event.x,0)).x
+    y = canvas2space(vec2(0, event.y)).y
     
     if click_op.get() == "cp":
         create_point(x, y)
@@ -275,8 +276,8 @@ def clicked_on_canvas(event):
         adjust_com_buffer(x, y, "l")
 
 def right_clicked_on_canvas(event):
-    x = canvas2space([event.x,0])[0]
-    y = canvas2space([0, event.y])[1]
+    x = canvas2space(vec2(event.x,0)).x
+    y = canvas2space(vec2(0, event.y)).y
 
     if click_op.get() == "af":
         apply_force_with_mouse(x, y, "r")
@@ -303,13 +304,13 @@ def calc_com():
     
     for p in calc_com_buffer:
         com_mass += p.get_mass()
-        com_x += p.get_pos()[0] * p.get_mass()
-        com_y += p.get_pos()[1] * p.get_mass()
+        com_x += p.get_pos().x * p.get_mass()
+        com_y += p.get_pos().y * p.get_mass()
 
     com_x = com_x / com_mass
     com_y = com_y / com_mass
 
-    return ([com_x, com_y], com_mass)
+    return (vec2(com_x, com_y), com_mass)
 
 def apply_force_with_mouse(x, y, click):
     global force_buffer
@@ -327,7 +328,7 @@ def apply_force_with_mouse(x, y, click):
 
 def create_force(x, y, point):
     global forces
-    forces.append(const_force(name_field.get("1.0","end-1c"), point, scale_vector(point.get_vector_towards([x, y]), 0.01)))
+    forces.append(const_force(name_field.get("1.0","end-1c"), point, point.get_vector_towards(vec2(x, y)) * 0.01))
 
 def delete_force(x, y):
     global forces
@@ -362,12 +363,12 @@ def toggle_pause():
     if dt > 0:
         dt = 0
     else:
-        dt = 0.01
+        dt = 0.0025
 
 def get_closest_point_to_coords(x, y):
     result = None
     for p in points:
-        if not result or get_dist_between([x, y], p.get_pos()) < get_dist_between([x, y], result.get_pos()):
+        if not result or (vec2(x, y) - p.get_pos()).mag() < (vec2(x, y) - result.get_pos()).mag():
             result = p
 
     return result
@@ -375,8 +376,7 @@ def get_closest_point_to_coords(x, y):
 def get_closest_link_to_coords(x, y):
     result = None
     for l in links:
-        if not result or (get_dist_between([(l.p1.get_pos()[0] + l.p2.get_pos()[0])/2, (l.p1.get_pos()[1] + l.p2.get_pos()[1])/2], [x,y]) <
-                          get_dist_between([(result.p1.get_pos()[0] + result.p2.get_pos()[0])/2, (result.p1.get_pos()[1] + result.p2.get_pos()[1])/2], [x,y])):
+        if not result or (vec2(x, y) - l.get_midpoint()).mag() < (result.get_midpoint() - vec2(x, y)).mag():
             result = l
 
     return result
@@ -384,14 +384,13 @@ def get_closest_link_to_coords(x, y):
 def get_closest_force_to_coords(x, y):
     result = None
     for f in forces:
-        if not result or (get_dist_between([x, y], [f.point.get_pos()[0]+f.force[0]*100, f.point.get_pos()[1]+f.force[1]*100]) <
-                          get_dist_between([x, y], [result.point.get_pos()[0]+result.force[0]*100, result.point.get_pos()[1]+result.force[1]*100])):
+        if not result or ((vec2(x, y) - (f.point.get_pos() + f.force * 100)).mag() < (vec2(x, y), (result.point.get_pos() + result.force * 100).mag())):
             result = f
 
     return result
 
 def create_point(x, y):
-    new_point = point(name_field.get("1.0","end-1c"), [x, y], [0,0], "seagreen", float(point_mass_field.get("1.0","end-1c")), staticPoint.get())
+    new_point = point(name_field.get("1.0","end-1c"), vec2(x, y), vec2(), "seagreen", float(point_mass_field.get("1.0","end-1c")), staticPoint.get())
     points.append(new_point)
 
 def delete_point(x, y):
@@ -453,7 +452,7 @@ pauseResumeButton.grid(row=7, column=0)
 tk_canvas = Canvas(root, width=900, height=500, bg="white")
 tk_canvas.grid(row=0, column=1, rowspan=15, columnspan=5)
 
-main_cam = camera("main_cam", [100, 50], 1, "active")
+main_cam = camera("main_cam", vec2(100, 50), 1, "active")
 
 # canvas click
 click_op = StringVar(root, "cp")
@@ -522,22 +521,22 @@ root.bind("<Control_L>", zoom_current_cam_out)
 root.bind("<Shift_L>", zoom_current_cam_in)
 
 # crane
-n0 = point("n0", [-30,-100], [0,0], "seagreen", 1, static=True)
-n1 = point("n1", [30,-100], [0,0], "seagreen", 1, static=True)
-n2 = point("n2", [-30,0], [0,0], "seagreen", 1)
-n3 = point("n3", [30,-0], [0,0], "seagreen", 1)
-n4 = point("n4", [-30,100], [0,0], "seagreen", 1)
-n5 = point("n5", [30,100], [0,0], "seagreen", 1)
-n6 = point("n6", [-30,200], [0,0], "seagreen", 1)
-n7 = point("n7", [30,200], [0,0], "seagreen", 1)
+n0 = point("n0", vec2(-30,-100), vec2(), "seagreen", 1, static=True)
+n1 = point("n1", vec2(30,-100), vec2(), "seagreen", 1, static=True)
+n2 = point("n2", vec2(-30,0), vec2(), "seagreen", 1)
+n3 = point("n3", vec2(30,-0), vec2(), "seagreen", 1)
+n4 = point("n4", vec2(-30,100), vec2(), "seagreen", 1)
+n5 = point("n5", vec2(30,100), vec2(), "seagreen", 1)
+n6 = point("n6", vec2(-30,200), vec2(), "seagreen", 1)
+n7 = point("n7", vec2(30,200), vec2(), "seagreen", 1)
 
-t0 = point("t0", [-150, 100], [0,0], "seagreen", 5)
-t1 = point("t1", [-150, 200], [0,0], "seagreen", 7.5)
+t0 = point("t0", vec2(-150, 100), vec2(), "seagreen", 5)
+t1 = point("t1", vec2(-150, 200), vec2(), "seagreen", 7.5)
 
-z0 = point("z0", [350, 200], [0,0], "seagreen", 1.5)
-z1 = point("z1", [450, 200], [0,0], "seagreen", 1)
-z2 = point("z2", [350, 160], [0,0], "seagreen", 1.5)
-z3 = point("z3", [350, 50], [50,0], "seagreen", 0.05)
+z0 = point("z0", vec2(350, 200), vec2(), "seagreen", 1.5)
+z1 = point("z1", vec2(450, 200), vec2(), "seagreen", 1)
+z2 = point("z2", vec2(350, 160), vec2(), "seagreen", 1.5)
+z3 = point("z3", vec2(350, 50), vec2(50,0), "seagreen", 0.05)
 
 m0 = rigid_link("m0", n0, n1, "skyblue", 1000)
 m1 = rigid_link("m1", n2, n3, "skyblue", 1000)
@@ -607,51 +606,51 @@ while True:
 
     if not dt == 0:
         floor.apply_force(points)
-    tk_canvas.create_rectangle(-1000, space2canvas([0, floor.get_height()])[1],
+    tk_canvas.create_rectangle(-1000, space2canvas(vec2(0, floor.get_height())).y,
                                 1000, 500,
                                 fill=floor.get_color())
 
     for f in forces:
-        tk_canvas.create_line(space2canvas(f.point.get_pos())[0], space2canvas(f.point.get_pos())[1],
-                              space2canvas([f.point.get_pos()[0]+f.force[0]*100, f.point.get_pos()[1]])[0], space2canvas([f.point.get_pos()[0], f.point.get_pos()[1]+f.force[1]*100])[1],
+        tk_canvas.create_line(space2canvas(f.point.get_pos()).x, space2canvas(f.point.get_pos()).y,
+                              space2canvas(vec2(f.point.get_pos().x+f.force.x*100, f.point.get_pos().y)).x, space2canvas(vec2(f.point.get_pos().x, f.point.get_pos().y + f.force.y * 100)).y,
                               fill="blue", arrow=LAST)
         f.apply()
 
     for p in force_buffer:
-        tk_canvas.create_oval(space2canvas(p.get_pos())[0]-5, space2canvas(p.get_pos())[1]-5,
-                              space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
+        tk_canvas.create_oval(space2canvas(p.get_pos()).x-5, space2canvas(p.get_pos()).y-5,
+                              space2canvas(p.get_pos()).x+5, space2canvas(p.get_pos()).y+5,
                               fill="blue")
 
     for p in linking_buffer:
-        tk_canvas.create_oval(space2canvas(p.get_pos())[0]-5, space2canvas(p.get_pos())[1]-5,
-                              space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
+        tk_canvas.create_oval(space2canvas(p.get_pos()).x-5, space2canvas(p.get_pos()).y-5,
+                              space2canvas(p.get_pos()).x+5, space2canvas(p.get_pos()).y+5,
                               fill="red")
 
     if len(calc_com_buffer):
         for p in calc_com_buffer:
-            tk_canvas.create_oval(space2canvas(p.get_pos())[0]-5, space2canvas(p.get_pos())[1]-5,
-                              space2canvas(p.get_pos())[0]+5, space2canvas(p.get_pos())[1]+5,
+            tk_canvas.create_oval(space2canvas(p.get_pos()).x-5, space2canvas(p.get_pos()).y-5,
+                              space2canvas(p.get_pos()).x+5, space2canvas(p.get_pos()).y+5,
                               fill="#ffc100")
         
         com_pos, com_mass = calc_com()
-        tk_canvas.create_line(space2canvas(com_pos)[0]-8, space2canvas(com_pos)[1]-8,
-                              space2canvas(com_pos)[0]+8, space2canvas(com_pos)[1]+8,
+        tk_canvas.create_line(space2canvas(com_pos).x-8, space2canvas(com_pos).y-8,
+                              space2canvas(com_pos).x+8, space2canvas(com_pos).y+8,
                               fill="#ffc100")
 
-        tk_canvas.create_line(space2canvas(com_pos)[0]-8, space2canvas(com_pos)[1]+8,
-                              space2canvas(com_pos)[0]+8, space2canvas(com_pos)[1]-8,
+        tk_canvas.create_line(space2canvas(com_pos).x-8, space2canvas(com_pos).y+8,
+                              space2canvas(com_pos).x+8, space2canvas(com_pos).y-8,
                               fill="#ffc100")
 
     for link in links:
         if not dt == 0:
             link.apply_force()
-        tk_canvas.create_line(space2canvas(link.p1.get_pos())[0], space2canvas(link.p1.get_pos())[1],
-                              space2canvas(link.p2.get_pos())[0], space2canvas(link.p2.get_pos())[1],
+        tk_canvas.create_line(space2canvas(link.p1.get_pos()).x, space2canvas(link.p1.get_pos()).y,
+                              space2canvas(link.p2.get_pos()).x, space2canvas(link.p2.get_pos()).y,
                               fill=link.get_color())
     
     for p in points:
-        tk_canvas.create_oval(space2canvas(p.get_pos())[0]-1, space2canvas(p.get_pos())[1]-1,
-                              space2canvas(p.get_pos())[0]+1, space2canvas(p.get_pos())[1]+1,
+        tk_canvas.create_oval(space2canvas(p.get_pos()).x-1, space2canvas(p.get_pos()).y-1,
+                              space2canvas(p.get_pos()).x+1, space2canvas(p.get_pos()).y+1,
                               fill=p.get_color())
 
         if not dt == 0:
@@ -663,23 +662,23 @@ while True:
     if pointLabels.get():
         if pointLabelType.get() == "n":
             for p in points:
-                tk_canvas.create_text(space2canvas(p.get_pos())[0]-10, space2canvas(p.get_pos())[1]-10,
+                tk_canvas.create_text(space2canvas(p.get_pos()).x-10, space2canvas(p.get_pos()).y-10,
                                       text=p.get_name())
         elif pointLabelType.get() == "m":
             for p in points:
-                tk_canvas.create_text(space2canvas(p.get_pos())[0]-10, space2canvas(p.get_pos())[1]-10,
+                tk_canvas.create_text(space2canvas(p.get_pos()).x-10, space2canvas(p.get_pos()).y-10,
                                       text=str(p.get_mass()))
 
     if linkLabels.get():
         if linkLabelType.get() == "n":
             for l in links:
-                tk_canvas.create_text((space2canvas(l.p1.get_pos())[0] + space2canvas(l.p2.get_pos())[0])/2,
-                                      (space2canvas(l.p1.get_pos())[1] + space2canvas(l.p2.get_pos())[1])/2,
+                tk_canvas.create_text((space2canvas(l.p1.get_pos()).x + space2canvas(l.p2.get_pos()).x)/2,
+                                      (space2canvas(l.p1.get_pos()).y + space2canvas(l.p2.get_pos()).y)/2,
                                       text=l.get_name(), fill=l.get_color())
         elif linkLabelType.get() == "k":
             for l in links:
-                tk_canvas.create_text((space2canvas(l.p1.get_pos())[0] + space2canvas(l.p2.get_pos())[0])/2,
-                                      (space2canvas(l.p1.get_pos())[1] + space2canvas(l.p2.get_pos())[1])/2,
+                tk_canvas.create_text((space2canvas(l.p1.get_pos()).x + space2canvas(l.p2.get_pos()).x)/2,
+                                      (space2canvas(l.p1.get_pos()).y + space2canvas(l.p2.get_pos()).y)/2,
                                       text=str(l.get_k()), fill=l.get_color())
     
     root.update()
