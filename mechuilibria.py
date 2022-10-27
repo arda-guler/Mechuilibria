@@ -100,7 +100,7 @@ class ground():
 
             # friction
             if p.get_pos().y <= self.height:
-                p.apply_force(vec2(p.vel.x, 0) * p.mass*gravity.mag()*self.k)
+                p.apply_force(vec2(p.vel.x, 0).normalized() * -1 * p.mass*gravity.mag()*self.k)
 
 ########################
 #       LINK           #
@@ -384,7 +384,7 @@ def get_closest_link_to_coords(x, y):
 def get_closest_force_to_coords(x, y):
     result = None
     for f in forces:
-        if not result or ((vec2(x, y) - (f.point.get_pos() + f.force * 100)).mag() < (vec2(x, y), (result.point.get_pos() + result.force * 100).mag())):
+        if not result or ((vec2(x, y) - (f.point.get_pos() + f.force * 100)).mag() < (vec2(x, y) - (result.point.get_pos() + result.force * 100)).mag()):
             result = f
 
     return result
